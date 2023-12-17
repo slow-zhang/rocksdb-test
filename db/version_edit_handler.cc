@@ -64,11 +64,13 @@ void VersionEditHandlerBase::Iterate(log::Reader& reader,
       }
     }
   }
+  ROCKS_LOG_INFO(nullptr, "done decode & ApplyVersionEdit\n");
   if (!log_read_status->ok()) {
     s = *log_read_status;
   }
 
   CheckIterationResult(reader, &s);
+  ROCKS_LOG_INFO(nullptr, "done CheckIterationResult\n");
 
   if (!s.ok()) {
     if (s.IsCorruption()) {

@@ -418,6 +418,8 @@ Status DBImpl::Recover(
     uint64_t* recovered_seq, RecoveryContext* recovery_ctx) {
   mutex_.AssertHeld();
 
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", start to DBImpl::Recover\n");
+
   bool tmp_is_new_db = false;
   bool& is_new_db = recovery_ctx ? recovery_ctx->is_new_db_ : tmp_is_new_db;
   assert(db_lock_ == nullptr);
@@ -429,11 +431,16 @@ Status DBImpl::Recover(
     if (!s.ok()) {
       return s;
     }
+    ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done SetDirectories\n");
+
 
     s = env_->LockFile(LockFileName(dbname_), &db_lock_);
     if (!s.ok()) {
       return s;
     }
+
+    ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done LockFile\n");
+
 
     std::string current_fname = CurrentFileName(dbname_);
     // Path to any MANIFEST file in the db dir. It does not matter which one.
@@ -453,6 +460,7 @@ Status DBImpl::Recover(
         s = io_s;
         files_in_dbname.clear();
       }
+      ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done GetChildren\n");
       for (const std::string& file : files_in_dbname) {
         uint64_t number = 0;
         FileType type = kWalFile;  // initialize
@@ -467,6 +475,7 @@ Status DBImpl::Recover(
           }
         }
       }
+      ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done GetFileSize\n");
     }
     if (s.IsNotFound()) {
       if (immutable_db_options_.create_if_missing) {
@@ -489,6 +498,8 @@ Status DBImpl::Recover(
       assert(s.IsIOError());
       return s;
     }
+    ROCKS_LOG_INFO(immutable_db_options_.info_log, 
+                    ", start Verify compatibility of file_options_ and filesystem\n");
     // Verify compatibility of file_options_ and filesystem
     {
       std::unique_ptr<FSRandomAccessFile> idfile;
@@ -526,6 +537,7 @@ Status DBImpl::Recover(
     }
     assert(s.ok());
   }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", start to checking missing_table_file\n");
   assert(db_id_.empty());
   Status s;
   bool missing_table_file = false;
@@ -541,6 +553,8 @@ Status DBImpl::Recover(
           new ColumnFamilyMemTablesImpl(versions_->GetColumnFamilySet()));
     }
   }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done versions_->Recover\n");
+
   if (!s.ok()) {
     return s;
   }
@@ -641,16 +655,20 @@ Status DBImpl::Recover(
         }
       }
     }
+    ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done trivially move files down\n");
   }
   s = SetupDBId(read_only, recovery_ctx);
   ROCKS_LOG_INFO(immutable_db_options_.info_log, "DB ID: %s\n", db_id_.c_str());
   if (s.ok() && !read_only) {
     s = DeleteUnreferencedSstFiles(recovery_ctx);
   }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", DeleteUnreferencedSstFiles\n");
 
   if (immutable_db_options_.paranoid_checks && s.ok()) {
     s = CheckConsistency();
   }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", CheckConsistency\n");
+
   if (s.ok() && !read_only) {
     // TODO: share file descriptors (FSDirectory) with SetDirectories above
     std::map<std::string, std::shared_ptr<FSDirectory>> created_dirs;
@@ -661,6 +679,8 @@ Status DBImpl::Recover(
       }
     }
   }
+
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", AddDirectories\n");
 
   std::vector<std::string> files_in_wal_dir;
   if (s.ok()) {
@@ -677,6 +697,8 @@ Status DBImpl::Recover(
     default_cf_handle_ = new ColumnFamilyHandleImpl(
         versions_->GetColumnFamilySet()->GetDefault(), this, &mutex_);
     default_cf_internal_stats_ = default_cf_handle_->cfd()->internal_stats();
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", SetupDBId and DeleteUnreferencedSstFiles\n");
+
 
     // Recover from all newer log files than the ones named in the
     // descriptor (new log files may have been added by the previous
@@ -697,6 +719,7 @@ Status DBImpl::Recover(
     } else if (!s.ok()) {
       return s;
     }
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", SetupDBId and DeleteUnreferencedSstFiles\n");
 
     std::unordered_map<uint64_t, std::string> wal_files;
     for (const auto& file : files_in_wal_dir) {
@@ -737,6 +760,8 @@ Status DBImpl::Recover(
     if (!s.ok()) {
       return s;
     }
+    ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done find wal_files\n");
+
 
     if (!wal_files.empty()) {
       if (error_if_wal_file_exists) {
@@ -766,6 +791,8 @@ Status DBImpl::Recover(
         wals.push_back(wal_file.first);
       }
       std::sort(wals.begin(), wals.end());
+      ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done add wal_files\n");
+
 
       bool corrupted_wal_found = false;
       s = RecoverLogFiles(wals, &next_sequence, read_only, &corrupted_wal_found,
@@ -782,6 +809,9 @@ Status DBImpl::Recover(
       }
     }
   }
+
+  ROCKS_LOG_INFO(immutable_db_options_.info_log, ", done CreateNewMemtable\n");
+
 
   if (read_only) {
     // If we are opening as read-only, we need to update options_file_number_
@@ -1966,6 +1996,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
   } else {
     assert(impl->init_logger_creation_s_.ok());
   }
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done new new DBImpl\n");
   s = impl->env_->CreateDirIfMissing(impl->immutable_db_options_.GetWalDir());
   if (s.ok()) {
     std::vector<std::string> paths;
@@ -1990,6 +2021,8 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       impl->error_handler_.EnableAutoRecovery();
     }
   }
+  ROCKS_LOG_INFO(nullptr, "done CreateDirIfMissing\n");
+
   if (s.ok()) {
     s = impl->CreateArchivalDirectory();
   }
@@ -2002,6 +2035,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
   RecoveryContext recovery_ctx;
   impl->options_mutex_.Lock();
   impl->mutex_.Lock();
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done IsWalDirSameAsDBPath  and lock\n");
 
   // Handles create_if_missing, error_if_exists
   uint64_t recovered_seq(kMaxSequenceNumber);
@@ -2009,6 +2043,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
                     false /* error_if_wal_file_exists */,
                     false /* error_if_data_exists_in_wals */, &recovered_seq,
                     &recovery_ctx);
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done Recover\n");
   if (s.ok()) {
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     log::Writer* new_log = nullptr;
@@ -2059,9 +2094,11 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
       }
     }
   }
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done after recovery\n");
   if (s.ok()) {
     s = impl->LogAndApplyForRecovery(recovery_ctx);
   }
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done LogAndApplyForRecovery\n");
 
   if (s.ok() && impl->immutable_db_options_.persist_stats_to_disk) {
     impl->mutex_.AssertHeld();
@@ -2112,6 +2149,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
     // try to read format version
     s = impl->PersistentStatsProcessFormatVersion();
   }
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done PersistentStatsProcessFormatVersion\n");
 
   if (s.ok()) {
     for (auto cfd : *impl->versions_->GetColumnFamilySet()) {
@@ -2146,6 +2184,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
     persist_options_status.PermitUncheckedError();
   }
   impl->mutex_.Unlock();
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done DeleteObsoleteFiles\n");
 
   auto sfm = static_cast<SstFileManagerImpl*>(
       impl->immutable_db_options_.sst_file_manager.get());
@@ -2183,6 +2222,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
         known_file_sizes[name] = bmd.blob_file_size;
       }
     }
+    ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done sst_file_manager Set Statistics\n");
 
     std::vector<std::string> paths;
     paths.emplace_back(impl->immutable_db_options_.db_paths[0].path);
@@ -2202,6 +2242,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
           ->GetChildren(path, io_opts, &existing_files,
                         /*IODebugContext*=*/nullptr)
           .PermitUncheckedError();  //**TODO: What do to on error?
+      ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done PermitUncheckedError\n");
       for (auto& file_name : existing_files) {
         uint64_t file_number;
         FileType file_type;
@@ -2229,6 +2270,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
     sfm->ReserveDiskBuffer(max_write_buffer_size,
                            impl->immutable_db_options_.db_paths[0].path);
   }
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done PermitUncheckedError\n");
 
 
   if (s.ok()) {
@@ -2269,6 +2311,7 @@ Status DBImpl::Open(const DBOptions& db_options, const std::string& dbname,
     delete impl;
     *dbptr = nullptr;
   }
+  ROCKS_LOG_INFO(impl->immutable_db_options_.info_log, "done open\n");
   return s;
 }
 }  // namespace ROCKSDB_NAMESPACE

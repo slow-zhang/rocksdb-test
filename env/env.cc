@@ -847,6 +847,13 @@ void LogFlush(Logger* info_log) {
 }
 
 static void Logv(Logger* info_log, const char* format, va_list ap) {
+  static Logger* s_fallback_logger = nullptr;  
+  if (info_log && s_fallback_logger == nullptr) {
+    s_fallback_logger = info_log;
+  } else if (info_log == nullptr && s_fallback_logger) {
+    info_log = s_fallback_logger;
+  }
+
   if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::INFO_LEVEL) {
     info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
   }
@@ -894,6 +901,13 @@ void Logger::Logv(const InfoLogLevel log_level, const char* format,
 
 static void Logv(const InfoLogLevel log_level, Logger* info_log,
                  const char* format, va_list ap) {
+  static Logger* s_fallback_logger = nullptr;  
+  if (info_log && s_fallback_logger == nullptr) {
+    s_fallback_logger = info_log;
+  } else if (info_log == nullptr && s_fallback_logger) {
+    info_log = s_fallback_logger;
+  }
+
   if (info_log && info_log->GetInfoLogLevel() <= log_level) {
     if (log_level == InfoLogLevel::HEADER_LEVEL) {
       info_log->LogHeader(format, ap);

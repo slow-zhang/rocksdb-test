@@ -30,6 +30,7 @@
 #include "db/table_cache.h"
 #include "db/version_edit.h"
 #include "db/version_set.h"
+#include "logging/logging.h"
 #include "port/port.h"
 #include "table/table_reader.h"
 #include "util/string_util.h"
@@ -1293,6 +1294,14 @@ class VersionBuilder::Rep {
       }
     }
 
+    ROCKS_LOG_INFO(nullptr, "prepare to load %zu file metas, is_init, %d\n", 
+                  max_load, is_initial_load);
+    if (is_initial_load) {
+      ROCKS_LOG_INFO(nullptr,", but set load no file at startup\n");
+      max_load = 0;
+    }
+
+
     // <file metadata, level>
     std::vector<std::pair<FileMetaData*, int>> files_meta;
     std::vector<Status> statuses;
@@ -1312,6 +1321,9 @@ class VersionBuilder::Rep {
         break;
       }
     }
+    files_meta.clear();
+    ROCKS_LOG_INFO(nullptr, "start to parallel opening files\n");
+
 
     std::atomic<size_t> next_file_meta_idx(0);
     std::function<void()> load_handlers_func([&]() {
@@ -1355,6 +1367,8 @@ class VersionBuilder::Rep {
         }
       }
     }
+    ROCKS_LOG_INFO(nullptr, "done parallel open files\n");
+
     return ret;
   }
 };

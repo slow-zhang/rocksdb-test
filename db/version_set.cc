@@ -5962,6 +5962,7 @@ Status VersionSet::Recover(
         /*track_missing_files=*/false, no_error_if_files_missing, io_tracer_,
         read_options, EpochNumberRequirement::kMightMissing);
     handler.Iterate(reader, &log_read_status);
+    ROCKS_LOG_DEBUG(db_options_->info_log, "done Iterate manifest\n");
     s = handler.status();
     if (s.ok()) {
       log_number = handler.GetVersionEditParams().GetLogNumber();
